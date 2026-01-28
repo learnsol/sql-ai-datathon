@@ -101,10 +101,10 @@ set @prompt = json_modify(@prompt, '$.response_format', json_query(@js))
 --select @payload
 declare @retval int, @response nvarchar(max);
 exec @retval = sp_invoke_external_rest_endpoint
-    @url = '<OPENAI_URL>/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview',
+    @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-4.1/chat/completions?api-version=2024-12-01-preview',
     @headers = '{"Content-Type":"application/json"}',
     @method = 'POST',
-    @credential = [<OPENAI_URL>],
+    @credential = [https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/],
     @timeout = 120,
     @payload = @prompt,
     @response = @response output

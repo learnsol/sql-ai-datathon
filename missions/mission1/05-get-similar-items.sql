@@ -1,46 +1,28 @@
--- Take a look at the vector
-select top(1)
-	json_query(response, '$.result.data[0].embedding') 
-from 
-	dbo.http_response
-go
-
--- How many products overall?
-select count(*) from dbo.[walmart_ecommerce_product_details]
-go
-
--- Similarity Search
-drop table if exists dbo.similar_items
 declare @top int = 50
 declare @min_similarity decimal(19,16) = 0.75
-drop table if exists ##s;
+drop table if exists similar_items;
 declare @qv vector(1536) = (
 	select top(1)
 		cast(json_query(response, '$.result.data[0].embedding') as vector(1536)) as query_vector
 	from 
 		dbo.http_response
 )
-select top(@top)    
-    p.id,
-    vector_distance('cosine', @qv, embedding) as distance,
-    p.[product_name],
-    p.[description],
-    p.category
-into
-    dbo.similar_items
-from 
-    dbo.[walmart_ecommerce_product_details] p 
-where
-    vector_distance('cosine', @qv, embedding) <= 1-@min_similarity
-order by    
-    distance;
-;
 
-select 
-	*,
-	similarity = 1-distance 
-from 
-    dbo.similar_items
-order by    
-    distance;
-go
+SELECT TOP (10) w.id,
+                w.product_name,
+                w.description,
+                w.category,
+                r.distance,
+                similarity = 1 - r.distance
+INTO similar_items
+FROM VECTOR_SEARCH(
+         TABLE = dbo.walmart_ecommerce_product_details AS w,
+         COLUMN = embedding,
+         SIMILAR_TO = @qv,
+         METRIC = 'cosine',
+         TOP_N = 10
+     ) AS r
+WHERE r.distance <= 1 - @min_similarity
+ORDER BY r.distance;
+
+select * from similar_items;

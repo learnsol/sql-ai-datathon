@@ -19,12 +19,12 @@ declare @prompt nvarchar(max) = json_object(
         json_object(
             'role':'system',
             'content':'
-                You as a system assistant who helps users find the best products available in the catalog to satesfy the requested ask.
+                You as a system assistant who helps users find the best products available in the catalog to satisfy the requested ask.
                 Products are provided in an assitant message using a JSON Array with the following format: [{id, name, description}].                 
                 Use only the provided products to help you answer the question.        
                 Use only the information available in the provided JSON to answer the question.
                 Return the top ten products that best answer the question.
-                For each returned produce add a short explanation of why the product has been suggested. Put the explanation in parentheis and start with "Thoughts:"
+                For each returned product add a short explanation of why the product has been suggested. Put the explanation in parenthesis and start with "Thoughts:"
                 Make sure to use details, notes, and description that are provided in each product are used only with that product.                
                 If the question cannot be answered by the provided samples, don''t return any result.
                 If asked question is about topics you don''t know, don''t return any result.
@@ -53,10 +53,10 @@ declare @prompt nvarchar(max) = json_object(
 --select @payload
 declare @retval int, @response nvarchar(max);
 exec @retval = sp_invoke_external_rest_endpoint
-    @url = '<OPENAI_URL>/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview',
+    @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-4.1/chat/completions?api-version=2024-08-01-preview',
     @headers = '{"Content-Type":"application/json"}',
     @method = 'POST',
-    @credential = [<OPENAI_URL>],
+    @credential = [https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/],
     @timeout = 120,
     @payload = @prompt,
     @response = @response output

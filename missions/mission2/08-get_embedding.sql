@@ -8,9 +8,9 @@ declare @payload nvarchar(max) = json_object('input': @inputText);
 declare @response nvarchar(max)
 begin try
     exec @retval = sp_invoke_external_rest_endpoint
-        @url = '<OPENAI_URL>/openai/deployments/embeddings/embeddings?api-version=2023-03-15-preview',
+        @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-03-15-preview',
         @method = 'POST',
-        @credential = [https://<OPENAI_URL>.openai.azure.com],
+        @credential = [https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/],
         @payload = @payload,
         @response = @response output
         with result sets none;

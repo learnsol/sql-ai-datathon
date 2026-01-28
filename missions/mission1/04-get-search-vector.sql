@@ -10,7 +10,7 @@ set @payload = json_object('input': @text);
 -- Call to OpenAI to get the embedding of the search text
 begin try
     exec @retval = sp_invoke_external_rest_endpoint
-        @url = '<OPENAI_URL>/openai/deployments/embeddings/embeddings?api-version=2023-03-15-preview',
+        @url = '<OPENAI_URL>/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-03-15-preview',
         @method = 'POST',
         @credential = [https://<OPENAI_URL>.openai.azure.com],
         @payload = @payload,
@@ -39,3 +39,9 @@ insert into dbo.http_response (response) values (@response);
 
 select * from dbo.http_response
 
+-- Take a look at the vector
+select top(1)
+	json_query(response, '$.result.data[0].embedding') as embedding
+from 
+	dbo.http_response
+go
