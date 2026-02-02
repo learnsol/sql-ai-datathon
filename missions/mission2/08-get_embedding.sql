@@ -31,3 +31,35 @@ set @embedding = cast(@re as vector(1536));
 return @retval
 go
 
+
+create or alter procedure [dbo].[get_similar_items]
+@inputText nvarchar(max),
+@result nvarchar(max) = null output,
+@error nvarchar(max) = null output
+as
+declare @top int = 10
+declare @min_similarity decimal(19,16) = 0.75
+declare @qv vector(1536)
+declare @embedding vector(1536)
+exec dbo.get_embedding @inputText = @inputText, @embedding = @embedding output, @error = @error output
+if @error is not null
+    return -1
+
+SELECT @result = (
+    SELECT  
+        w.id,
+        w.product_name AS name,
+        w.description
+    FROM VECTOR_SEARCH(
+             TABLE = dbo.walmart_ecommerce_product_details AS w,
+             COLUMN = embedding,
+             SIMILAR_TO = @embedding,
+             METRIC = 'cosine',
+             TOP_N = @top
+         ) AS r
+    WHERE r.distance <= 1 - @min_similarity
+    ORDER BY r.distance
+    FOR JSON PATH
+);
+
+SELECT @result AS result;

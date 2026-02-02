@@ -11,7 +11,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "Azurite.azurite"
+        "ms-mssql.mssql"
       ]
     }
   }
