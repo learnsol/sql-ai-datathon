@@ -45,6 +45,12 @@ kernelBuilder.AddAzureOpenAIChatCompletion("gpt-4.1", aoaiEndpoint, apiKey);
 var kernel = kernelBuilder.Build();
 builder.Services.AddSingleton(kernel);
 
+// Add HttpClient for DAB API calls
+builder.Services.AddHttpClient("DAB", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5000");
+});
+
 var app = builder.Build();
 
 // Configure middleware
@@ -83,35 +89,41 @@ app.MapGet("/", () => Results.Ok(new { status = "healthy", service = "SQL AI API
    .WithName("HealthCheck")
    .WithOpenApi();
 
-// Get all products (paginated)
-app.MapGet("/api/products", (int page = 1, int pageSize = 10) =>
+// Get all products (paginated) - uses DAB API
+app.MapGet("/api/products", async (IHttpClientFactory httpClientFactory, int page = 1, int pageSize = 10) =>
 {
-    var products = new List<Dictionary<string, object>>();
+    var client = httpClientFactory.CreateClient("DAB");
     
-    using var connection = new SqlConnection(connectionString);
-    connection.Open();
-    
+    // Calculate offset for DAB's $first and $after pagination
     var offset = (page - 1) * pageSize;
-    var query = $@"
-        SELECT id, item_id, product_name, product_category, price_retail, price_current
-        FROM {productsTable}
-        ORDER BY id
-        OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
     
-    using var command = new SqlCommand(query, connection);
-    using var reader = command.ExecuteReader();
+    // DAB REST API with OData-style query parameters
+    var dabUrl = $"/api/Products?$first={pageSize}&$after={offset}";
     
-    while (reader.Read())
+    try
     {
-        var product = new Dictionary<string, object>();
-        for (int i = 0; i < reader.FieldCount; i++)
+        var response = await client.GetAsync(dabUrl);
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync();
+        var dabResponse = JsonSerializer.Deserialize<JsonElement>(json);
+        
+        // Extract products from DAB response
+        var products = new List<object>();
+        if (dabResponse.TryGetProperty("value", out var valueArray))
         {
-            product[reader.GetName(i)] = reader.IsDBNull(i) ? null! : reader.GetValue(i);
+            foreach (var item in valueArray.EnumerateArray())
+            {
+                products.Add(item);
+            }
         }
-        products.Add(product);
+        
+        return Results.Ok(new { page, pageSize, products });
     }
-    
-    return Results.Ok(new { page, pageSize, products });
+    catch (HttpRequestException ex)
+    {
+        return Results.Problem($"Error connecting to DAB: {ex.Message}. Make sure DAB is running on port 5000.");
+    }
 })
 .WithName("GetProducts")
 .WithOpenApi();
@@ -119,8 +131,6 @@ app.MapGet("/api/products", (int page = 1, int pageSize = 10) =>
 // Search products using vector similarity
 app.MapGet("/api/products/search", (string query) =>
 {
-    var results = new List<Dictionary<string, object>>();
-    
     using var connection = new SqlConnection(connectionString);
     connection.Open();
     
@@ -128,26 +138,31 @@ app.MapGet("/api/products/search", (string query) =>
     command.Connection = connection;
     command.CommandText = @"
         SET NOCOUNT ON;
-        DECLARE @out nvarchar(max);
-        EXEC [dbo].[get_similar_items] @inputText = @searchTerm, @error = @out OUTPUT;
-        SELECT @out AS error;";
+        DECLARE @result nvarchar(max);
+        DECLARE @error nvarchar(max);
+        EXEC [dbo].[get_similar_items] @inputText = @searchTerm, @result = @result OUTPUT, @error = @error OUTPUT;
+        SELECT @result AS result, @error AS error;";
     command.Parameters.AddWithValue("@searchTerm", query);
     
     using var reader = command.ExecuteReader();
-    do
+    if (reader.Read())
     {
-        while (reader.Read())
+        var resultJson = reader["result"]?.ToString();
+        var error = reader["error"]?.ToString();
+        
+        if (!string.IsNullOrEmpty(error))
         {
-            var row = new Dictionary<string, object>();
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null! : reader.GetValue(i);
-            }
-            results.Add(row);
+            return Results.Problem($"Search error: {error}");
         }
-    } while (reader.NextResult());
+        
+        if (!string.IsNullOrEmpty(resultJson))
+        {
+            var products = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(resultJson);
+            return Results.Ok(new { query, results = products });
+        }
+    }
     
-    return Results.Ok(new { query, results });
+    return Results.Ok(new { query, results = new List<object>() });
 })
 .WithName("SearchProducts")
 .WithOpenApi();
@@ -236,8 +251,6 @@ app.Run();
 
 static string SearchProducts(string searchTerm, string connString)
 {
-    var results = new List<string>();
-    
     using var connection = new SqlConnection(connString);
     connection.Open();
     
@@ -245,26 +258,23 @@ static string SearchProducts(string searchTerm, string connString)
     command.Connection = connection;
     command.CommandText = @"
         SET NOCOUNT ON;
-        DECLARE @out nvarchar(max);
-        EXEC [dbo].[get_similar_items] @inputText = @searchTerm, @error = @out OUTPUT;
-        SELECT @out AS error;";
+        DECLARE @result nvarchar(max);
+        DECLARE @error nvarchar(max);
+        EXEC [dbo].[get_similar_items] @inputText = @searchTerm, @result = @result OUTPUT, @error = @error OUTPUT;
+        SELECT @result AS result, @error AS error;";
     command.Parameters.AddWithValue("@searchTerm", searchTerm);
     
     using var reader = command.ExecuteReader();
-    do
+    if (reader.Read())
     {
-        while (reader.Read())
+        var resultJson = reader["result"]?.ToString();
+        if (!string.IsNullOrEmpty(resultJson))
         {
-            var row = new List<string>();
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                row.Add($"{reader.GetName(i)}: {reader[i]}");
-            }
-            results.Add(string.Join(", ", row));
+            return resultJson;
         }
-    } while (reader.NextResult());
+    }
     
-    return string.Join("\n", results);
+    return string.Empty;
 }
 
 // =============================================================================

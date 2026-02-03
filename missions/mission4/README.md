@@ -1,77 +1,120 @@
 # Mission 4: Building a Full-Stack AI Application
 
-This mission brings together everything you've learned to build a complete, production-ready application with a modern frontend powered by AI-enhanced backend APIs. You'll use Data API Builder to rapidly create REST/GraphQL endpoints from your database and connect them to a provided frontend application.
+This mission brings together everything you've learned to build a complete, production-ready application with a modern frontend powered by AI-enhanced backend APIs. You'll configure Data API Builder (DAB) to expose your database as REST/GraphQL endpoints and integrate it with a .NET backend and frontend application.
 
 ## Overview
-Transform your SQL database into a full-featured API with minimal code, then integrate it with a frontend to create an end-to-end AI-powered application. This mission demonstrates how modern development tools can dramatically accelerate the path from database to deployed application.
+
+Your mission is to **configure DAB** to expose your product catalog, then run the full-stack application that combines:
+- **DAB** for automatic REST/GraphQL APIs from your database
+- **.NET Minimal API** for AI-powered chat and vector search endpoints
+- **Frontend** for a user-friendly product search experience
 
 ## Learning Objectives
-- **Generate REST/GraphQL APIs**: Use Data API Builder (DAB) to automatically create secure, production-ready APIs from your database
-- **Configure Entity Endpoints**: Map database tables, views, and stored procedures to API endpoints with custom permissions
-- **Integrate Frontend & Backend**: Connect a provided frontend application to your DAB-powered API endpoints
-- **Secure Your APIs**: Implement authentication, authorization, and role-based access control
-- **Deploy Full-Stack Applications**: Learn deployment patterns for integrated frontend/backend solutions
+
+- **Configure Data API Builder**: Set up DAB to expose database entities as REST/GraphQL endpoints
+- **Use Environment Variables**: Securely manage connection strings and API keys
+- **Integrate Multiple Services**: Connect DAB, .NET API, and frontend together
+- **Test Full-Stack Applications**: Verify end-to-end functionality
 
 ## Prerequisites
-1. Mission 1-3 completed (embeddings, RAG, and orchestration)
-1. Azure SQL Database with schema and data from previous missions
-1. Data API Builder CLI installed
-1. Node.js (for frontend) or .NET SDK (if using custom backend)
+
+1. Missions 1-3 completed (embeddings, RAG, and orchestration)
+2. SQL Server with the `walmart_ecommerce_product_details` table and stored procedures
+3. .NET 9 SDK installed
+4. Data API Builder CLI installed
 
 ---
 
-## What is Data API Builder?
+## Project Structure
 
-Data API Builder (DAB) is an open-source tool that automatically generates REST and GraphQL APIs from your database. Instead of writing boilerplate code for CRUD operations, DAB reads your database schema and creates fully-featured APIs with:
-
-- **Automatic CRUD operations** (Create, Read, Update, Delete)
-- **Flexible querying** with filtering, sorting, and pagination
-- **GraphQL & REST support** - choose the API style that fits your needs
-- **Built-in authentication** supporting multiple providers (Azure AD, JWT, etc.)
-- **Role-based authorization** at the entity and field level
-- **Relationship navigation** automatically discovers and exposes foreign key relationships
+```
+mission4/
+├── .env                    # Environment variables (connection strings, API keys)
+├── README.md               # This file
+├── frontend/
+│   └── index.html          # Single-page frontend application
+└── dotnet/
+    ├── Program.cs          # .NET Minimal API with AI endpoints
+    ├── SqlAiApp.csproj     # Project file
+    ├── dab-config.json     # DAB configuration (YOUR MISSION!)
+    └── start.ps1           # Startup script
+```
 
 ---
 
 ## Step 1: Install Data API Builder
 
-### Using .NET CLI
 ```bash
 dotnet tool install -g Microsoft.DataApiBuilder
 ```
 
-### Verify Installation
+Verify installation:
 ```bash
 dab --version
 ```
 
-You should see the DAB version number if installed successfully.
+---
+
+## Step 2: Configure Environment Variables
+
+Create or update the `.env` file in the `mission4` folder:
+
+```properties
+# Database connection
+SERVER_CONNECTION_STRING=Server=YOUR_SERVER;Database=YOUR_DATABASE;Trusted_Connection=yes;TrustServerCertificate=yes;
+
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+MODEL_API_KEY=your-api-key-here
+```
 
 ---
 
-## Step 2: Initialize DAB Configuration
+## Step 3: Configure DAB (Your Mission!)
 
-Navigate to your project root and initialize a new DAB configuration:
+Navigate to the `dotnet` folder and configure DAB to expose your products table.
+
+### Initialize DAB
 
 ```bash
-# Initialize with SQL Server
-dab init --database-type mssql --connection-string "@env('SQL_CONN_STR')" --host-mode development
+cd dotnet
+dab init --database-type mssql --connection-string "@env('SERVER_CONNECTION_STRING')" --host-mode development
 ```
 
-This creates a `dab-config.json` file that defines:
-- Database connection settings
-- Exposed entities (tables/views)
-- Security policies
-- Runtime configuration
+### Add the Products Entity
 
-### Understanding the Config Structure
+```bash
+dab add Products --source "dbo.walmart_ecommerce_product_details" --permissions "anonymous:read"
+```
+
+### Configure CORS
+
+Edit `dab-config.json` to allow requests from the .NET app:
+
+```json
+{
+  "runtime": {
+    "host": {
+      "cors": {
+        "origins": ["http://localhost:5001"],
+        "allow-credentials": true
+      },
+      "mode": "development"
+    }
+  }
+}
+```
+
+### Expected dab-config.json
+
+Your final configuration should look similar to:
 
 ```json
 {
   "$schema": "https://github.com/Azure/data-api-builder/releases/latest/download/dab.draft.schema.json",
   "data-source": {
     "database-type": "mssql",
-    "connection-string": "@env('SQL_CONN_STR')"
+    "connection-string": "@env('SERVER_CONNECTION_STRING')"
   },
   "runtime": {
     "rest": {
@@ -84,58 +127,131 @@ This creates a `dab-config.json` file that defines:
       "allow-introspection": true
     },
     "host": {
-      "mode": "development",
       "cors": {
-        "origins": ["http://localhost:3000"],
+        "origins": ["http://localhost:5001"],
         "allow-credentials": true
-      }
+      },
+      "mode": "development"
     }
   },
-  "entities": {}
+  "entities": {
+    "Products": {
+      "source": {
+        "object": "dbo.walmart_ecommerce_product_details",
+        "type": "table"
+      },
+      "permissions": [
+        {
+          "role": "anonymous",
+          "actions": ["read"]
+        }
+      ]
+    }
+  }
 }
 ```
 
 ---
 
-## Step 3: Add Entity Endpoints
+## Step 4: Run the Application
 
+### Option A: Use the startup script (recommended)
 
-## Step 4: Configure Advanced Permissions
-## Step 5: Run Data API Builder
+```powershell
+cd dotnet
+.\start.ps1
+```
 
-Start the DAB runtime:
+This script:
+1. Loads environment variables from `.env`
+2. Starts DAB on port 5000
+3. Starts the .NET API on port 5001
+4. Opens the frontend in your browser
 
+### Option B: Run manually
+
+**Terminal 1 - Start DAB:**
 ```bash
+cd dotnet
+$env:SERVER_CONNECTION_STRING="your-connection-string"
 dab start
 ```
 
-DAB will:
-1. Connect to your database
-2. Read the schema
-3. Start REST and GraphQL servers (default: http://localhost:5000)
+**Terminal 2 - Start .NET API:**
+```bash
+cd dotnet
+dotnet run
+```
 
-### Test Your Endpoints
+**Browser:**
+Open `http://localhost:5001/app`
 
+---
+
+## Step 5: Test the Application
+
+### Available Endpoints
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:5001/app | Product search UI |
+| Swagger | http://localhost:5001/swagger | API documentation |
+| DAB REST | http://localhost:5000/api/Products | Direct database access |
+| DAB GraphQL | http://localhost:5000/graphql | GraphQL playground |
+
+### Test the Features
+
+1. **Browse Products**: Click the "Browse Products" tab to see paginated results from DAB
+2. **Vector Search**: Use the "Vector Search" tab to find products using semantic similarity
+3. **AI Chat**: Ask the AI assistant questions like "I need a gaming laptop"
+
+---
+
+## Application Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    Frontend     │────▶│   .NET API      │────▶│   Azure OpenAI  │
+│  (port 5001)    │     │  (port 5001)    │     │                 │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        │                        │                        │
+        ▼                        ▼                        ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│      DAB        │     │   SQL Server    │     │  Vector Search  │
+│  (port 5000)    │────▶│   (Database)    │◀────│ (Stored Procs)  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
 ---
 
-## Step 6: Connect the Frontend
+## Troubleshooting
+
+### DAB won't start
+- Check that `SERVER_CONNECTION_STRING` environment variable is set
+- Verify the connection string format and server accessibility
+- Ensure no other process is using port 5000
+
+### Products not loading
+- Verify DAB is running: `curl http://localhost:5000/api/Products`
+- Check CORS configuration in `dab-config.json`
+- Ensure the table `dbo.walmart_ecommerce_product_details` exists
+
+### Vector search not working
+- Verify the `get_similar_items` stored procedure exists
+- Check that embeddings are populated in the database
+- Ensure Azure OpenAI credentials are correct in `.env`
+
 ---
-
-## Step 7: Add Custom Backend Logic (Optional)
-
-## Step 8: Deployment
-
-### Deploy to Azure
-
 
 ## Next Steps
 
 After completing this mission, you have a production-ready, AI-powered full-stack application! Consider:
 
-- **Add Analytics**: Track usage patterns, popular queries, response accuracy
-- **Implement Feedback Loop**: Allow users to rate responses and improve your RAG system
-- **Expand AI Capabilities**: Add summarization, classification, or content generation
-- **Scale for Production**: Implement monitoring, logging, and alerting
+- **Add More Entities**: Expose additional tables or views through DAB
+- **Implement Authentication**: Add Azure AD or JWT authentication to DAB
+- **Deploy to Azure**: Use Azure Static Web Apps + Azure SQL + Azure Container Apps
+- **Add Analytics**: Track usage patterns and popular queries
 - **Open Hack**: Use this foundation for the Week 4 Open Hack challenge!
+

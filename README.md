@@ -13,11 +13,11 @@ Complete all four missions to level up your skills, and add your own creative tw
 5. Repeat for Missions 2, 3, 4.
 
 ## Mission Briefs
-1. [Embeddings & Search](missions/mission1/README.md)
-2. [Retrieval Augmented Generation (RAG)](missions/mission2/README.md)
-3. [Orchestrate SQL + AI workflows in C# or Python](missions/mission3/README.md)
-4. [Building a Full-Stack AI Application in C# or Python](missions/mission4/README.md)
-5. [Open Hack]()
+1. [Embeddings & Search](missions/mission1)
+2. [Retrieval Augmented Generation (RAG)](missions/mission2)
+3. [Orchestrate SQL + AI workflows in C# or Python](missions/mission3)
+4. [Building a Full-Stack AI Application in C# or Python](missions/mission4)
+5. [Open Hack](open-hack.md)
 
 ## What you’ll build
 - Embeddings & search 

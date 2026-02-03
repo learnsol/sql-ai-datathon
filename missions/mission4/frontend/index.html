@@ -304,65 +304,18 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
-        /* Config Panel */
-        .config-panel {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-
-        .config-panel label {
-            display: block;
-            margin-bottom: 5px;
-            color: #888;
-        }
-
-        .config-panel input {
-            width: 300px;
-            padding: 10px;
-            border: none;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-        }
-
-        .status {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            margin-left: 15px;
-        }
-
-        .status.connected {
-            background: rgba(0, 255, 100, 0.2);
-            color: #00ff64;
-        }
-
-        .status.disconnected {
-            background: rgba(255, 0, 0, 0.2);
-            color: #ff6464;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🛒 SQL AI Product Assistant</h1>
-            <p>Powered by Azure OpenAI & SQL Server Vector Search</p>
+            <p>Powered by Azure OpenAI & SQL Server 2025</p>
         </header>
-
-        <div class="config-panel">
-            <label>API Base URL</label>
-            <input type="text" id="apiUrl" value="" onchange="checkConnection()">
-            <span id="connectionStatus" class="status disconnected">Checking...</span>
-        </div>
 
         <div class="tabs">
             <button class="tab active" onclick="showPanel('chat')">💬 AI Chat</button>
-            <button class="tab" onclick="showPanel('search')">🔍 Vector Search</button>
+            <button class="tab" onclick="showPanel('search')">🔍 Semantic Search</button>
             <button class="tab" onclick="showPanel('browse')">📦 Browse Products</button>
         </div>
 
@@ -415,26 +368,11 @@
     <script>
         let currentPage = 1;
         const pageSize = 12;
+        let nextPageUrl = null;  // Store DAB's nextLink for cursor pagination
+        let pageHistory = [];    // Store URLs for previous pages
 
-        function getApiUrl() {
-            return document.getElementById('apiUrl').value;
-        }
-
-        async function checkConnection() {
-            const status = document.getElementById('connectionStatus');
-            try {
-                const response = await fetch(getApiUrl() + '/');
-                if (response.ok) {
-                    status.textContent = 'Connected';
-                    status.className = 'status connected';
-                } else {
-                    throw new Error('Not OK');
-                }
-            } catch (e) {
-                status.textContent = 'Disconnected';
-                status.className = 'status disconnected';
-            }
-        }
+        const API_URL = 'http://localhost:5001';
+        const DAB_URL = 'http://localhost:5000';
 
         function showPanel(panelId) {
             document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -465,7 +403,7 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
             try {
-                const response = await fetch(getApiUrl() + '/api/chat', {
+                const response = await fetch(API_URL + '/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: message })
@@ -491,10 +429,12 @@
             resultsContainer.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
             try {
-                const response = await fetch(getApiUrl() + '/api/products/search?query=' + encodeURIComponent(query));
+                const response = await fetch(API_URL + '/api/products/search?query=' + encodeURIComponent(query));
                 const data = await response.json();
 
                 if (data.results && data.results.length > 0) {
+                    console.log(data.results);
+                    
                     resultsContainer.innerHTML = data.results.map(product => createProductCard(product)).join('');
                 } else {
                     resultsContainer.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">No products found. Try a different search term.</p>';
@@ -504,37 +444,60 @@
             }
         }
 
-        async function loadProducts() {
+        async function loadProducts(url = null) {
             const resultsContainer = document.getElementById('browseResults');
             resultsContainer.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
             try {
-                const response = await fetch(getApiUrl() + `/api/products?page=${currentPage}&pageSize=${pageSize}`);
+                // Use provided URL (for pagination) or default first page
+                const dabUrl = url || `${DAB_URL}/api/Products?$first=${pageSize}`;
+                const response = await fetch(dabUrl);
                 const data = await response.json();
 
-                if (data.products && data.products.length > 0) {
-                    resultsContainer.innerHTML = data.products.map(product => createProductCard(product)).join('');
+                // DAB returns products in 'value' array
+                const products = data.value || [];
+                
+                // Store nextLink for cursor-based pagination
+                nextPageUrl = data.nextLink || null;
+                
+                if (products.length > 0) {
+                    resultsContainer.innerHTML = products.map(product => createProductCard(product)).join('');
                     document.getElementById('pageInfo').textContent = `Page ${currentPage}`;
                     document.getElementById('prevBtn').disabled = currentPage === 1;
-                    document.getElementById('nextBtn').disabled = data.products.length < pageSize;
+                    document.getElementById('nextBtn').disabled = !nextPageUrl;
                 } else {
                     resultsContainer.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">No products found.</p>';
                 }
             } catch (error) {
-                resultsContainer.innerHTML = '<p style="color:#ff6464;text-align:center;padding:40px;">❌ Error connecting to API</p>';
+                console.error('Error loading products:', error);
+                resultsContainer.innerHTML = '<p style="color:#ff6464;text-align:center;padding:40px;">❌ Error connecting to DAB API. Make sure DAB is running on port 5000.</p>';
             }
         }
 
         function changePage(delta) {
-            currentPage = Math.max(1, currentPage + delta);
-            loadProducts();
+            if (delta > 0 && nextPageUrl) {
+                // Going forward - use nextLink cursor
+                pageHistory.push(`${DAB_URL}/api/Products?$first=${pageSize}`);
+                currentPage++;
+                loadProducts(nextPageUrl);
+            } else if (delta < 0 && currentPage > 1) {
+                // Going back - reload from start (simplified approach)
+                currentPage--;
+                if (currentPage === 1) {
+                    loadProducts();
+                } else {
+                    // For simplicity, go back to page 1
+                    currentPage = 1;
+                    pageHistory = [];
+                    loadProducts();
+                }
+            }
         }
 
         function createProductCard(product) {
-            const name = product.product_name || product.productName || 'Unknown Product';
-            const category = product.product_category || product.productCategory || 'Uncategorized';
-            const currentPrice = product.price_current || product.priceCurrent || product.Price || 0;
-            const retailPrice = product.price_retail || product.priceRetail || currentPrice;
+            const name = product.name || product.product_name || 'Unknown Product';
+            const category = (product.product_category || product.category || 'Uncategorized').replace(/\|/g, ', ');
+            const currentPrice = product.sale_price || product.price_current || product.priceCurrent || product.Price || 0;
 
             return `
                 <div class="product-card">
@@ -542,7 +505,6 @@
                     <div class="category">${escapeHtml(category)}</div>
                     <div class="price">
                         $${parseFloat(currentPrice).toFixed(2)}
-                        ${retailPrice > currentPrice ? `<span class="price-original">$${parseFloat(retailPrice).toFixed(2)}</span>` : ''}
                     </div>
                 </div>
             `;
@@ -553,9 +515,6 @@
             div.textContent = text;
             return div.innerHTML;
         }
-
-        // Initial connection check
-        checkConnection();
     </script>
 </body>
 </html>
