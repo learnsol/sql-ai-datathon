@@ -49,7 +49,9 @@ SELECT @result = (
     SELECT  
         w.id,
         w.product_name AS name,
-        w.description
+        w.description,
+        w.category,
+        w.sale_price
     FROM VECTOR_SEARCH(
              TABLE = dbo.walmart_ecommerce_product_details AS w,
              COLUMN = embedding,
