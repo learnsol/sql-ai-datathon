@@ -2,8 +2,7 @@
 
 Welcome to the SQL AI Datathon! You'll complete guided missions that will prepare you for building AI-powered applications with Microsoft SQL. You’ll use AI features to build embeddings, semantic/hybrid search, DAB endpoints, and an agent with RAG.
 
-Complete all four missions to earn a badge and unlock the Open Hack challenge.
-You'll add your own creative twist in the Open Hack and be eligible for judging for a ticket to SQLCon 2026!
+Complete all four missions to level up your skills, and add your own creative twist in the Open Hack and be eligible for judging for a ticket to [SQLCon 2026](https://techcon365.com/26sqlcon/)!
 
 
 ## Quick Start
@@ -26,19 +25,5 @@ You'll add your own creative twist in the Open Hack and be eligible for judging 
 - An agent that answers questions grounded in your SQL data
 
 ## How you’re evaluated for the Open Hack
-- CI must pass for each mission to receive a badge and your Open Hack submission to be eligible for judging
 - README clarity & reproducibility
 - Creativity, impact, and alignment with SQL + AI objectives
-
-# How to Submit for a Datathon Completion Badge 
-1. Ensure all mission workflows passed on your repo.
-2. Open an Issue on [this repo](https://github.com/your-repo-link) using the “Badge Submission” template.
-3. Paste links to:
-   - Issue with all successful workflow runs.
-
-# How to Submit for a Badge with and Open Hack Entry
-1. Ensure all mission workflows passed on your repo.
-2. Open an Issue on [this repo](https://github.com/your-repo-link) using the “Final Submission” template.
-3. Paste links to:
-   - Issue with all successful workflow runs.
-   - Entry README and any demo instructions
