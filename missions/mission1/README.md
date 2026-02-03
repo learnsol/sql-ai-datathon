@@ -1,8 +1,7 @@
 # Mission 1: Creating Embeddings and Performing Search
 
-You will be guided through implementing semantic search capabilities using embedding models and Azure SQL Database. In this mission, you will:
+You will be guided through implementing semantic search capabilities using embedding models. In this mission, you will:
 
-## Learning Objectives
 - **Convert Text to Vectors**: Use an embedding model to convert text into high-dimensional vector representations
 - **Store Embeddings**: Store embeddings efficiently in Azure SQL Database
 - **Query with Vector Similarity**: Query the database using vector similarity to find semantically related content
@@ -15,9 +14,10 @@ You will be guided through implementing semantic search capabilities using embed
 
 ### Create a SQL Database
 
-You have two options to create an SQL Database:
-- Azure SQL Database instance
-- Local SQL Server instance with SQL Server 2025 or later, use the free developer edition
+You have a few options to create an SQL Database, click one of the links below for instructions:
+- [Azure SQL Database instance](https://learn.microsoft.com/en-us/azure/azure-sql/database/single-database-create-quickstart?view=azuresql&tabs=azure-portal)
+- [Local SQL Server instance with SQL Server 2025 or later, use the free developer edition](https://learn.microsoft.com/en-us/sql/database-engine/install-windows/install-sql-server?view=sql-server-ver17#installation-media)
+- [Docker container with SQL Server 2025 or later](https://learn.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker?view=sql-server-ver17&preserve-view=true&tabs=cli&pivots=cs1-bash)
 
 ## Setting Up the Database
 
