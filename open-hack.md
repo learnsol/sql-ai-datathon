@@ -28,7 +28,6 @@ Ask the bot about a product, and it fetches details from the SQL database before
 
 
 
-
 ### Option 2: Semantic Search Tool
 Build a search experience that allows users to enter natural language queries and receive relevant results from a Microsoft SQL database.
 What this should demonstrate:
