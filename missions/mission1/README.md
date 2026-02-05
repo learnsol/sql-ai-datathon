@@ -196,7 +196,7 @@ GO
 
 DECLARE @text NVARCHAR(MAX) = 'anything for a teenager boy passionate about racing cars? he owns an XBOX, he likes to build stuff';
 DECLARE @top INT = 50;
-DECLARE @min_similarity DECIMAL(19,16) = 0.75;
+DECLARE @min_similarity DECIMAL(19,16) = 0.3;
 
 -- Generate embedding for search query using AI_GENERATE_EMBEDDINGS
 DECLARE @qv VECTOR(1536) = AI_GENERATE_EMBEDDINGS(@text USE MODEL MyEmbeddingModel);
