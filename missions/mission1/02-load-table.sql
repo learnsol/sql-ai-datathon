@@ -103,7 +103,7 @@ go
 -- SECTION 3: Validate File Access
 -- -----------------------------------------------------------------------------
 SELECT * FROM OPENROWSET(
-    BULK 'walmart-product-with-embeddings-dataset-usa-copy.csv',
+    BULK 'walmart-product-with-embeddings-dataset-usa-text-3-small.csv',
     DATA_SOURCE = 'openai_playground',
     SINGLE_CLOB
 ) AS test;
@@ -118,9 +118,7 @@ SELECT * FROM OPENROWSET(
 */
 
 BULK INSERT dbo.[walmart_ecommerce_product_details]
-FROM 'walmart-product-with-embeddings-dataset-usa-copy.csv'
--- Uncomment and use the line below if loading from containerized environment
--- FROM '/data/walmart-product-with-embeddings-dataset-usa-copy.csv'
+FROM 'walmart-product-with-embeddings-dataset-usa-text-3-small.csv'
 WITH (
     DATA_SOURCE = 'openai_playground',
     FORMAT = 'CSV',

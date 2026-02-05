@@ -99,21 +99,41 @@ DECLARE @prompt NVARCHAR(MAX) = JSON_OBJECT(
 
 
 -- -----------------------------------------------------------------------------
--- SECTION 4: Call Azure OpenAI Chat Completion API
+-- SECTION 4: Call Chat Completion API (Supports GitHub Models or Azure Foundry)
 -- -----------------------------------------------------------------------------
--- NOTE: This uses the gpt-5-mini model. To use a different model, update "gpt-5-mini" in the URL below
--- and in any other files that reference it (e.g., mission3 notebooks, mission4 apps).
-DECLARE @retval INT, @response NVARCHAR(MAX);
+-- CONFIGURATION: Set @provider to choose the model provider
+--   'GITHUB'  - Use GitHub Models (models.github.ai)
+--   'FOUNDRY' - Use Azure AI Foundry (requires <FOUNDRY_RESOURCE_NAME> and <OPENAI_URL>)
+-- -----------------------------------------------------------------------------
+DECLARE @provider NVARCHAR(20) = 'GITHUB';  -- Change to 'FOUNDRY' for Azure AI Foundry
 
+DECLARE @retval INT, @response NVARCHAR(MAX);
+DECLARE @url NVARCHAR(500), @credential NVARCHAR(200);
+
+-- Set URL and credential based on provider
+IF @provider = 'GITHUB'
+BEGIN
+    SET @url = 'https://models.github.ai/inference/chat/completions';
+    SET @credential = 'https://models.github.ai/inference';
+END
+ELSE IF @provider = 'FOUNDRY'
+BEGIN
+    -- Replace <FOUNDRY_RESOURCE_NAME> with your Azure AI Foundry resource name
+    SET @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-5-mini/chat/completions?api-version=2025-04-01-preview';
+    SET @credential = '<ENDPOINT_URL>';
+END
+
+-- Call the API
 EXEC @retval = sp_invoke_external_rest_endpoint
-    @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-5-mini/chat/completions?api-version=2025-04-01-preview',
+    @url = @url,
     @headers = '{"Content-Type":"application/json"}',
     @method = 'POST',
-    @credential = [<OPENAI_URL>],
+    @credential = @credential,
     @timeout = 120,
     @payload = @prompt,
     @response = @response OUTPUT
     WITH RESULT SETS NONE;
+
 
 -- -----------------------------------------------------------------------------
 -- SECTION 5: Display Results
@@ -121,9 +141,20 @@ EXEC @retval = sp_invoke_external_rest_endpoint
 -- Raw response
 SELECT @response AS raw_response;
 
--- Extracted chat message
-SELECT o.[text] AS chat_response
-FROM OPENJSON(@response, '$.result.output[1].content') 
-WITH ([text] NVARCHAR(MAX)) AS o;
-
-
+-- Extracted chat message (different JSON paths per provider)
+IF @provider = 'GITHUB'
+BEGIN
+    -- GitHub Models response path: $.result.choices[].message.content
+    SELECT m.content AS chat_response
+    FROM OPENJSON(@response, '$.result.choices')
+    WITH (
+        content NVARCHAR(MAX) '$.message.content'
+    ) AS m;
+END
+ELSE IF @provider = 'FOUNDRY'
+BEGIN
+    -- Azure Foundry response path: $.result.output[1].content[].text
+    SELECT o.[text] AS chat_response
+    FROM OPENJSON(@response, '$.result.output[1].content') 
+    WITH ([text] NVARCHAR(MAX)) AS o;
+END

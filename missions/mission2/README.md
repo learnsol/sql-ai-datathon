@@ -25,9 +25,14 @@ Mission 1 completed:
 
 This script implements RAG by combining vector search results with a language model to generate natural language responses grounded in actual product data (see <a href="https://github.com/microsoft/sql-ai-datathon/blob/main/missions/mission2/01-chat-with-data.sql" target="_blank">01-chat-with-data.sql</a>).
 
-Replace `<FOUNDRY_RESOURCE_NAME>` with your Azure OpenAI resource name:
+The script supports two providers. Set `@provider` to choose:
+- `'GITHUB'` - Use GitHub Models (models.github.ai)
+- `'FOUNDRY'` - Use Azure AI Foundry
 
 ```sql
+USE ProductDB;
+GO
+
 DECLARE @request NVARCHAR(MAX) = 'anything for a teenager boy passionate about racing cars? he owns an XBOX, he likes to build stuff';
 
 DECLARE @products JSON =
@@ -77,28 +82,59 @@ DECLARE @prompt NVARCHAR(MAX) = JSON_OBJECT(
     'model': 'gpt-5-mini'
 );
 
--- NOTE: This uses the gpt-5-mini model. To use a different model, update the model name.
+-- CONFIGURATION: Set @provider to choose the model provider
+DECLARE @provider NVARCHAR(20) = 'GITHUB';  -- Change to 'FOUNDRY' for Azure AI Foundry
+
 DECLARE @retval INT, @response NVARCHAR(MAX);
+DECLARE @url NVARCHAR(500), @credential NVARCHAR(200);
+
+-- Set URL and credential based on provider
+IF @provider = 'GITHUB'
+BEGIN
+    SET @url = 'https://models.github.ai/inference/chat/completions';
+    SET @credential = 'https://models.github.ai/inference';
+END
+ELSE IF @provider = 'FOUNDRY'
+BEGIN
+    -- Replace <FOUNDRY_RESOURCE_NAME> with your Azure AI Foundry resource name
+    SET @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-5-mini/chat/completions?api-version=2025-04-01-preview';
+    SET @credential = '<ENDPOINT_URL>';
+END
 
 EXEC @retval = sp_invoke_external_rest_endpoint
-    @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-5-mini/chat/completions?api-version=2025-04-01-preview',
+    @url = @url,
     @headers = '{"Content-Type":"application/json"}',
     @method = 'POST',
-    @credential = [https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/],
+    @credential = @credential,
     @timeout = 120,
     @payload = @prompt,
     @response = @response OUTPUT
     WITH RESULT SETS NONE;
 
--- Extract chat response using OPENJSON
-SELECT o.[text] AS chat_response
-FROM OPENJSON(@response, '$.result.output[1].content') 
-WITH ([text] NVARCHAR(MAX)) AS o;
+-- Extract chat response (different JSON paths per provider)
+IF @provider = 'GITHUB'
+BEGIN
+    -- GitHub Models: $.result.choices[].message.content
+    SELECT m.content AS chat_response
+    FROM OPENJSON(@response, '$.result.choices')
+    WITH (content NVARCHAR(MAX) '$.message.content') AS m;
+END
+ELSE IF @provider = 'FOUNDRY'
+BEGIN
+    -- Azure Foundry: $.result.output[1].content[].text
+    SELECT o.[text] AS chat_response
+    FROM OPENJSON(@response, '$.result.output[1].content') 
+    WITH ([text] NVARCHAR(MAX)) AS o;
+END
 ```
 
 ### Step 2: Structured Output from Chat
 
 This script extends RAG to return structured JSON output instead of free-form text, making it easier to process programmatically (see <a href="https://github.com/microsoft/sql-ai-datathon/blob/main/missions/mission2/02-chat-with-data-structured-output.sql" target="_blank">02-chat-with-data-structured-output.sql</a>).
+
+The script supports two providers:
+- `'FOUNDRY'` - Use Microsoft Foundry
+- `'GITHUB'` - Use GitHub Models
 
 The JSON schema enforces this output format:
 ```json
@@ -114,7 +150,7 @@ The JSON schema enforces this output format:
 }
 ```
 
-Replace `<FOUNDRY_RESOURCE_NAME>` with your Azure OpenAI resource name and run the script.
+Set `@provider` to `'FOUNDRY'` or `'GITHUB'` in SECTION 5 of the script and replace the appropriate placeholders before running. Note that each provider uses slightly different prompt structures and response JSON paths.
 
 ### Step 3: Setting up Stored Procedures
 

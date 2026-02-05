@@ -2,6 +2,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/../.env"
+MISSION4_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Load environment variables
 if [ -f "$ENV_FILE" ]; then
@@ -25,9 +26,9 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-# Start DAB
+# Start DAB from mission4 directory (where dab-config.json is located)
 echo "Starting DAB on port 5000..."
-dab start &
+(cd "$MISSION4_DIR" && dab start) &
 DAB_PID=$!
 sleep 3
 

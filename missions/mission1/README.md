@@ -29,6 +29,8 @@ docker run -e "ACCEPT_EULA=Y" -e "MSSQL_SA_PASSWORD=YourStrong@Passw0rd" \
 ```
 ## Setting Up the Database
 
+> This script is also available in the repo as <a href="https://github.com/microsoft/sql-ai-datathon/blob/main/missions/mission1/01-create-table.sql" target="_blank">01-create-table.sql</a>
+
 1. Run the following query to create the database and table structure:
 
 ```sql
@@ -68,7 +70,7 @@ SET PREVIEW_FEATURES = ON;
 GO
 ```
 
-2. Download the [sample data from kaggle](https://www.kaggle.com/datasets/mauridb/product-data-from-walmart-usa-with-embeddings/versions/3) and unzip it to access the `walmart_ecommerce_product_details.csv` file.
+2. Download the [sample data from kaggle](https://www.kaggle.com/datasets/mauridb/product-data-from-walmart-usa-with-embeddings?select=walmart-product-with-embeddings-dataset-usa-text-3-small) and unzip it to access the `walmart_ecommerce_product_details.csv` file.
 
 3. Load data from Azure Blob Storage or local storage (see <a href="https://github.com/microsoft/sql-ai-datathon/blob/main/missions/mission1/02-load-table.sql" target="_blank">02-load-table.sql</a> for blob storage details and cleanup scripts for mistakes). If you are using local storage, you can use the following command to bulk insert data into your table:
 
@@ -108,35 +110,81 @@ You can get your endpoint and key from the provider you choose. Make sure to hav
 
 Run the following script, replacing placeholders with your actual credentials (see <a href="https://github.com/microsoft/sql-ai-datathon/blob/main/missions/mission1/03-create-http-credentials.sql" target="_blank">03-create-http-credentials.sql</a> for more options including Managed Identity):
 
+### Option A: Microsoft Foundry (API Key)
+
 ```sql
-CREATE DATABASE SCOPED CREDENTIAL [https://<OPENAI_URL>.openai.azure.com]
-WITH IDENTITY = 'HTTPEndpointHeaders', 
-     SECRET = '{"api-key":"<OPENAI_API_KEY>"}';
+IF NOT EXISTS (SELECT * FROM sys.database_scoped_credentials WHERE [name] = '<OPENAI_URL>')
+BEGIN
+    CREATE DATABASE SCOPED CREDENTIAL [<OPENAI_URL>]
+    WITH IDENTITY = 'HTTPEndpointHeaders', 
+         SECRET = '{"api-key":"<OPENAI_API_KEY>"}';
+END
+GO
+```
+
+### Option B: GitHub Models
+
+```sql
+IF NOT EXISTS (SELECT * FROM sys.database_scoped_credentials WHERE [name] = 'https://models.github.ai/inference')
+BEGIN
+    CREATE DATABASE SCOPED CREDENTIAL [https://models.github.ai/inference]
+    WITH IDENTITY = 'HTTPEndpointHeaders', 
+         SECRET = '{"Authorization":"Bearer <GITHUB_TOKEN>"}';
+END
 GO
 ```
 
 Verify your credentials:
 
 ```sql
-SELECT * FROM sys.database_scoped_credentials WHERE [name] = 'https://<OPENAI_URL>.openai.azure.com';
+SELECT * FROM sys.database_scoped_credentials;
 GO
 ```
 
 ### Create External Model for Embeddings
 
-Create an external model that enables the `AI_GENERATE_EMBEDDINGS()` function to call Azure OpenAI:
+Create an external model that enables the `AI_GENERATE_EMBEDDINGS()` function. Choose the provider that matches your credentials:
+
+#### Option A: Microsoft Foundry
 
 ```sql
-CREATE EXTERNAL MODEL MyEmbeddingModel
-WITH (
-      LOCATION = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/text-embedding-3-small/embeddings?api-version=2023-05-15',
-      API_FORMAT = 'Azure OpenAI',
-      MODEL_TYPE = EMBEDDINGS,
-      MODEL = 'text-embedding-3-small',
-      CREDENTIAL = [https://<OPENAI_URL>.openai.azure.com],
-      PARAMETERS = '{"dimensions":1536}'
-);
+IF NOT EXISTS (SELECT * FROM sys.external_models WHERE [name] = 'MyEmbeddingModel')
+BEGIN
+    CREATE EXTERNAL MODEL MyEmbeddingModel
+    WITH (
+          LOCATION = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/text-embedding-3-small/embeddings?api-version=2023-05-15',
+          API_FORMAT = 'Azure OpenAI',
+          MODEL_TYPE = EMBEDDINGS,
+          MODEL = 'text-embedding-3-small',
+          CREDENTIAL = [<OPENAI_URL>],
+          PARAMETERS = '{"dimensions":1536}'
+    );
+END
 GO
+```
+
+#### Option B: GitHub Models
+
+```sql
+IF NOT EXISTS (SELECT * FROM sys.external_models WHERE [name] = 'MyEmbeddingModel')
+BEGIN
+    CREATE EXTERNAL MODEL MyEmbeddingModel
+    WITH (
+          LOCATION = 'https://models.github.ai/inference/embeddings',
+          API_FORMAT = 'OpenAI',
+          MODEL_TYPE = EMBEDDINGS,
+          MODEL = 'text-embedding-3-small',
+          CREDENTIAL = [https://models.github.ai/inference],
+          PARAMETERS = '{"dimensions":1536}'
+    );
+END
+GO
+```
+
+#### Test External Model
+
+```sql
+SELECT AI_GENERATE_EMBEDDINGS('Test text' USE MODEL MyEmbeddingModel);
 ```
 
 ## Your First Semantic Search

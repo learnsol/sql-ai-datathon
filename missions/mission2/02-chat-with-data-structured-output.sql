@@ -2,16 +2,25 @@
 -- Mission 2: Structured JSON Output from Chat
 -- =============================================================================
 -- Description: Extends RAG implementation to return structured JSON output
---              instead of free-form text. Uses OpenAI's JSON Schema feature
+--              instead of free-form text. Uses JSON Schema feature
 --              to enforce consistent output format for easier processing.
+--
+-- Supported Providers:
+--   - FOUNDRY: Uses Microsoft Foundry
+--   - GITHUB: Uses GitHub Models
 --
 -- Prerequisites:
 --   - Mission 1 completed (similar_items table populated)
---   - Azure OpenAI gpt-5-mini model deployed (API version 2025-04-01-preview)
---   - Database-scoped credentials configured
+--   - Model deployed and credentials configured
 --
 -- Configuration:
---   Replace <FOUNDRY_RESOURCE_NAME> with your Azure OpenAI resource name
+--   1. Set @provider to 'FOUNDRY' or 'GITHUB' in SECTION 5
+--   2. Replace placeholders with your values:
+--      Microsoft Foundry:
+--        - <FOUNDRY_RESOURCE_NAME>: Your Microsoft Foundry resource name
+--        - <OPENAI_URL>: Your credential name
+--      GitHub Models:
+--        - Ensure credential exists for https://models.github.ai/inference
 --
 -- JSON Schema Definition:
 --   {
@@ -24,13 +33,6 @@
 --       }
 --     ]
 --   }
---
--- How It Works:
---   1. Builds prompt with product data from vector search
---   2. Attaches JSON schema via $.text.format parameter
---   3. Calls Azure OpenAI Responses API with structured output enabled
---   4. Extracts JSON from $.result.output[1].content[0].text path
---   5. Parses JSON response and joins back to product table
 --
 -- Output Columns:
 --   - id, product_name, description: Original product data
@@ -70,102 +72,133 @@ DECLARE @products JSON =
 -- -----------------------------------------------------------------------------
 -- SECTION 3: Build Chat Prompt with System Instructions
 -- -----------------------------------------------------------------------------
-DECLARE @prompt NVARCHAR(MAX) = JSON_OBJECT(
-    'input': JSON_ARRAY(
-        JSON_OBJECT(
-            'role': 'system',
-            'content': '
-                You as a system assistant who helps users find the best products available in the catalog to satesfy the requested ask.
-                Products are provided in an assitant message using a JSON Array with the following format: [{id, name, description}].                 
-                Use only the provided products to help you answer the question.        
-                Use only the information available in the provided JSON to answer the question.
-                Return up to top ten products that best answer the question. Return less than that ten products if not all products fit the request.
-                Don''t return products that are not relevant with the ask or that don''t comply with user request.
-                Make sure to use details, notes, and description that are provided in each product are used only with that product.                
-                If the question cannot be answered by the provided samples, don''t return any result.
-                If asked question is about topics you don''t know, don''t return any result.
-                If no products are provided, don''t return any result.                    
-            '
-        ),
-        JSON_OBJECT(
-            'role': 'assistant',
-            'content': 'The available products are the following:'
-        ),
-        JSON_OBJECT(
-            'role': 'assistant',
-            'content': COALESCE(CAST(@products AS NVARCHAR(MAX)), '')
-        ),
-        JSON_OBJECT(
-            'role': 'user',
-            'content': @request
-        )
-    ),    
-    'model': 'gpt-5-mini'
-);
+DECLARE @system_content NVARCHAR(MAX) = '
+    You as a system assistant who helps users find the best products available in the catalog to satesfy the requested ask.
+    Products are provided in an assitant message using a JSON Array with the following format: [{id, name, description}].                 
+    Use only the provided products to help you answer the question.        
+    Use only the information available in the provided JSON to answer the question.
+    Return up to top ten products that best answer the question. Return less than that ten products if not all products fit the request.
+    Don''t return products that are not relevant with the ask or that don''t comply with user request.
+    Make sure to use details, notes, and description that are provided in each product are used only with that product.                
+    If the question cannot be answered by the provided samples, don''t return any result.
+    If asked question is about topics you don''t know, don''t return any result.
+    If no products are provided, don''t return any result.                    
+';
 
 
 -- -----------------------------------------------------------------------------
 -- SECTION 4: Define Structured Output JSON Schema
 -- -----------------------------------------------------------------------------
-DECLARE @js NVARCHAR(MAX) = N'{
-    "format": {
-        "type": "json_schema",
-        "name": "products",
-        "strict": true,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "products": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "result_position": {
-                                "type": "number"
-                            },
-                            "id": {
-                                "type": "number"
-                            },
-                            "description": {
-                                "type": "string",
-                                "description": "a brief and summarized description of the product, no more than ten words"
-                            },                            
-                            "thoughts": {
-                                "type": "string",
-                                "description": "explanation of why the product has been chosen"
-                            }
-                        },
-                        "required": [
-                            "result_position",
-                            "id",                            
-                            "description",                            
-                            "thoughts"                            
-                        ],
-                        "additionalProperties": false
+DECLARE @json_schema NVARCHAR(MAX) = N'{
+    "type": "object",
+    "properties": {
+        "products": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "result_position": {
+                        "type": "number"
+                    },
+                    "id": {
+                        "type": "number"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "a brief and summarized description of the product, no more than ten words"
+                    },                            
+                    "thoughts": {
+                        "type": "string",
+                        "description": "explanation of why the product has been chosen"
                     }
-                }
-            },
-            "required": ["products"],
-            "additionalProperties": false
-        }        
-    }        
+                },
+                "required": [
+                    "result_position",
+                    "id",                            
+                    "description",                            
+                    "thoughts"                            
+                ],
+                "additionalProperties": false
+            }
+        }
+    },
+    "required": ["products"],
+    "additionalProperties": false
 }';
 
-SET @prompt = JSON_MODIFY(@prompt, '$.text', JSON_QUERY(@js));
-
 
 -- -----------------------------------------------------------------------------
--- SECTION 5: Call Azure OpenAI Chat Completion API
+-- SECTION 5: Call Chat Completion API (Supports Microsoft Foundry or GitHub Models)
 -- -----------------------------------------------------------------------------
--- NOTE: This uses the gpt-5-mini model. To use a different model, update "gpt-5-mini" in the URL below
--- and in any other files that reference it (e.g., mission3 notebooks, mission4 apps).
+-- CONFIGURATION: Set @provider to choose the model provider
+--   'FOUNDRY' - Use Microsoft Foundry 
+--   'GITHUB'  - Use GitHub Models
+-- -----------------------------------------------------------------------------
+DECLARE @provider NVARCHAR(20) = 'FOUNDRY';  -- Change to 'GITHUB' for GitHub Models
+
+DECLARE @prompt NVARCHAR(MAX);
 DECLARE @retval INT, @response NVARCHAR(MAX);
+DECLARE @url NVARCHAR(500), @credential NVARCHAR(200);
 
+IF @provider = 'FOUNDRY'
+BEGIN
+    -- Build prompt for Foundry 
+    SET @prompt = JSON_OBJECT(
+        'input': JSON_ARRAY(
+            JSON_OBJECT('role': 'system', 'content': @system_content),
+            JSON_OBJECT('role': 'assistant', 'content': 'The available products are the following:'),
+            JSON_OBJECT('role': 'assistant', 'content': COALESCE(CAST(@products AS NVARCHAR(MAX)), '')),
+            JSON_OBJECT('role': 'user', 'content': @request)
+        ),    
+        'model': 'gpt-5-mini'
+    );
+    
+    -- Add structured output format for Foundry ($.text.format)
+    DECLARE @foundry_format NVARCHAR(MAX) = JSON_OBJECT(
+        'format': JSON_OBJECT(
+            'type': 'json_schema',
+            'name': 'products',
+            'strict': CAST(1 AS BIT),
+            'schema': JSON_QUERY(@json_schema)
+        )
+    );
+    SET @prompt = JSON_MODIFY(@prompt, '$.text', JSON_QUERY(@foundry_format));
+    
+    -- Replace <FOUNDRY_RESOURCE_NAME> with your Microsoft Foundry resource name
+    SET @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-5-mini/chat/completions?api-version=2025-04-01-preview';
+    SET @credential = '<OPENAI_URL>';
+END
+ELSE IF @provider = 'GITHUB'
+BEGIN
+    -- Build prompt for GitHub Models (uses 'messages' array)
+    SET @prompt = JSON_OBJECT(
+        'messages': JSON_ARRAY(
+            JSON_OBJECT('role': 'system', 'content': @system_content),
+            JSON_OBJECT('role': 'assistant', 'content': 'The available products are the following:'),
+            JSON_OBJECT('role': 'assistant', 'content': COALESCE(CAST(@products AS NVARCHAR(MAX)), '')),
+            JSON_OBJECT('role': 'user', 'content': @request)
+        ),    
+        'model': 'gpt-4o-mini',
+        'response_format': JSON_OBJECT(
+            'type': 'json_schema',
+            'json_schema': JSON_OBJECT(
+                'name': 'products',
+                'strict': CAST(1 AS BIT),
+                'schema': JSON_QUERY(@json_schema)
+            )
+        )
+    );
+    
+    SET @url = 'https://models.github.ai/inference/chat/completions';
+    SET @credential = 'https://models.github.ai/inference';
+END
+
+-- Call the API
 EXEC @retval = sp_invoke_external_rest_endpoint
-    @url = 'https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/openai/deployments/gpt-5-mini/chat/completions?api-version=2025-04-01-preview',
+    @url = @url,
     @headers = '{"Content-Type":"application/json"}',
     @method = 'POST',
-    @credential = [https://<FOUNDRY_RESOURCE_NAME>.cognitiveservices.azure.com/],
+    @credential = @credential,
     @timeout = 120,
     @payload = @prompt,
     @response = @response OUTPUT
@@ -173,11 +206,27 @@ EXEC @retval = sp_invoke_external_rest_endpoint
 
 
 -- -----------------------------------------------------------------------------
--- SECTION 6: Store Response for Processing
+-- SECTION 6: Store Response and Extract Content (Provider-Specific Parsing)
 -- -----------------------------------------------------------------------------
+-- Extract the structured JSON content based on provider
+-- Foundry path: $.result.output[1].content[0].text
+-- GitHub path:  $.result.choices[0].message.content
+DECLARE @content NVARCHAR(MAX);
+
+IF @provider = 'FOUNDRY'
+BEGIN
+    SELECT @content = JSON_VALUE(m.[text], '$')
+    FROM OPENJSON(@response, '$.result.output[1].content') WITH ([text] NVARCHAR(MAX) '$.text') m;
+END
+ELSE IF @provider = 'GITHUB'
+BEGIN
+    SELECT @content = content
+    FROM OPENJSON(@response, '$.result.choices') WITH (content NVARCHAR(MAX) '$.message.content');
+END
+
 DROP TABLE IF EXISTS #r;
-CREATE TABLE #r (response NVARCHAR(MAX));
-INSERT INTO #r VALUES (@response);
+CREATE TABLE #r (response NVARCHAR(MAX), content NVARCHAR(MAX));
+INSERT INTO #r VALUES (@response, @content);
 GO
 
 
@@ -189,11 +238,7 @@ SELECT
 FROM 
     #r
 CROSS APPLY
-    OPENJSON(response, '$.result.output[1].content') WITH (
-        [text] NVARCHAR(MAX) '$.text'
-    ) m
-CROSS APPLY
-    OPENJSON(m.[text], '$.products') WITH (
+    OPENJSON(content, '$.products') WITH (
         result_position INT,
         id INT,        
         [description] NVARCHAR(MAX),
@@ -214,11 +259,7 @@ SELECT
 FROM 
     #r
 CROSS APPLY
-    OPENJSON(response, '$.result.output[1].content') WITH (
-        [text] NVARCHAR(MAX) '$.text'
-    ) m
-CROSS APPLY
-    OPENJSON(m.[text], '$.products') WITH (
+    OPENJSON(content, '$.products') WITH (
         result_position INT,
         id INT,        
         [description] NVARCHAR(MAX),
